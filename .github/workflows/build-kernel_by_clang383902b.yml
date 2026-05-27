@@ -67,7 +67,7 @@ jobs:
     - name: Download kernel source
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
+        git clone --depth=1 https://github.com/LineageOS/android_kernel_oneplus_sdm845 -b lineage-21.0 android-kernel
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
