@@ -136,30 +136,55 @@ jobs:
         export CC=aarch64-linux-android-gcc
         export LD=ld.lld
 
-        # 【核心修复】手动生成配置，不再依赖原作者有bug的脚本
-        make O=out ARCH=arm64 ${{ env.KERNEL_CONFIG }}
+        # ==========================================
+        # 【核心修复】手动准备配置文件（不再依赖 make defconfig）
+        # ==========================================
+        mkdir -p out
+        
+        # 自动查找设备对应的 defconfig
+        CONFIG_FILE=$(find arch/arm64/configs/ -name "*${{ env.DEVICE }}*defconfig" | head -n 1)
+        
+        if [ -z "$CONFIG_FILE" ]; then
+            echo "❌ 错误：在 arch/arm64/configs/ 下找不到包含 ${{ env.DEVICE }} 的配置文件！"
+            echo "请检查你的仓库中是否有对应的 defconfig 文件。"
+            exit 1
+        fi
+        
+        echo "🔍 找到配置文件: $CONFIG_FILE"
+        cp "$CONFIG_FILE" out/.config
+        echo "✅ 已复制配置到 out/.config"
+
+        # 手动开启 KernelSU 和必需的内核选项
+        echo "⚙️ 正在开启必需的内核配置..."
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_OVERLAY_FS=y" >> out/.config
         echo "CONFIG_KALLSYMS=y" >> out/.config
+        echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
+        echo "CONFIG_KERNFS=y" >> out/.config
+
+        # 应用配置
         make O=out ARCH=arm64 olddefconfig
 
-        # 【核心修复】简化编译命令，移除所有容易出错的变量
-        make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- Image.gz-dtb
+        # 开始编译
+        echo "🔥 开始编译 ${{ env.KERNEL_IMAGE_NAME }} ..."
+        make -j$(nproc --all) -s O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- ${{ env.KERNEL_IMAGE_NAME }}
 
     - name: Check a kernel output files
       run: |
        cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
+       if [ -f android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
            echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+           echo "✅ 内核编译成功！"
        else
-           echo "Kernel output file is empty"
+           echo "❌ 内核输出文件为空，编译失败！"
+           ls -R android-kernel/out/arch/arm64/boot/
            exit 1
        fi
-       if [ ${{ env.NEED_DTBO }} = true ]; then
-           if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
+       if [ "${{ env.NEED_DTBO }}" = "true" ]; then
+           if [ -f android-kernel/out/arch/arm64/boot/dtbo.img ]; then
                echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
            else
-               echo "DTBO image is empty"
+               echo "❌ DTBO 镜像为空，编译失败！"
                exit 1
            fi
        fi
@@ -169,9 +194,9 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         git clone https://github.com/tomxi1997/AnyKernel3.git
-        cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
-        if [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
-            cp android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
+        cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+        if [ "${{ env.CHECK_DTBO_IS_OK }}" = "true" ]; then
+            cp android-kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/
         fi
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
 
@@ -188,14 +213,14 @@ jobs:
         cd ./tmp
         ./magiskboot unpack boot.img 
         rm kernel
-        cp ../android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} ./kernel
+        cp ../android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ./kernel
         ./magiskboot repack boot.img 
         cp new-boot.img $GITHUB_WORKSPACE/kernel_workspace/boot.img
         cd ..
         if [ -f boot.img ]; then
             echo "MAKE_BOOT_IMAGE_IS_OK=true" >> $GITHUB_ENV
         else
-            echo "Boot image is empty"
+            echo "❌ Boot 镜像为空，制作失败！"
             exit 1
         fi
     
@@ -204,7 +229,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
+        path: kernel_workspace/android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}
 
     - name: Upload AnyKernel3
       if: env.CHECK_FILE_IS_OK == 'true'
@@ -218,7 +243,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: dtbo-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img
+        path: kernel_workspace/android-kernel/out/arch/arm64/boot/dtbo.img
 
     - name: Upload boot image
       if: env.MAKE_BOOT_IMAGE_IS_OK == 'true'
