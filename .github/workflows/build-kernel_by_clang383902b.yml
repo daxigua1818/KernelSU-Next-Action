@@ -127,24 +127,43 @@ jobs:
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        
-        # 【核心修复】回归 GCC 4.9 编译（4.9 内核最稳方案）
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/arm-linux-androideabi-4.9/bin:$PATH
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CC=aarch64-linux-android-gcc
-        export LD=ld.lld
 
-        # 【核心修复】手动生成配置
-        make O=out ARCH=arm64 vendor/sdm845-perf_defconfig
-        echo "CONFIG_KPROBES=y" >> out/.config
-        echo "CONFIG_OVERLAY_FS=y" >> out/.config
-        echo "CONFIG_KALLSYMS=y" >> out/.config
+        # ===============================
+        # 一加6T 氢OS11 / 内核4.9 专用
+        # ===============================
+
+        # 1️⃣ 工具链（只用 GCC 4.9）
+        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$PATH
+        export CROSS_COMPILE=aarch64-linux-android-
+        export ARCH=arm64
+
+        # 2️⃣ 清理旧产物
+        rm -rf out
+        mkdir -p out
+
+        # 3️⃣ 生成配置
+        make O=out ARCH=arm64 ${{ env.KERNEL_DEFCONFIG }}
+
+        # 4️⃣ KernelSU 必需选项
+        echo "CONFIG_KPROBES=y"           >> out/.config
+        echo "CONFIG_OVERLAY_FS=y"         >> out/.config
+        echo "CONFIG_KALLSYMS=y"           >> out/.config
+        echo "CONFIG_KALLSYMS_ALL=y"       >> out/.config
+
+        # 5️⃣ 应用配置
         make O=out ARCH=arm64 olddefconfig
 
-        # 【核心修复】开始编译
-        make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- Image.gz-dtb
+        # 6️⃣ 【关键】屏蔽一加私有驱动冲突（之前 oem_force_dump 报错）
+        sed -i 's/oem_force_dump.o//g' drivers/oneplus/drivers/oem_debug/Makefile 2>/dev/null || true
+        sed -i 's/oem_info.o//g' drivers/oneplus/drivers/oem_debug/Makefile 2>/dev/null || true
+
+        # 7️⃣ 开始编译
+        make -j$(nproc --all) O=out ARCH=arm64 \
+          CROSS_COMPILE=aarch64-linux-android- \
+          Image.gz-dtb
 
     - name: Check a kernel output files
       run: |
