@@ -61,9 +61,8 @@ jobs:
     - name: Download kernel source
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        # 核心修复：换回安卓 11 对应的 LineageOS 18.1 分支 (内核 4.9)
-        # 这里的 $KERNEL_SOURCE 前面没有 $，直接用 $ 即可
-        git clone --depth=1 "${{ env.KERNEL_SOURCE }}" -b $KERNEL_SOURCE_BRANCH android-kernel
+        # 下面这行我已经帮你把网址写死了，直接复制进去
+        git clone --depth=1 https://github.com/LineageOS/android_kernel_oneplus_sdm845 -b lineage-18.1 android-kernel
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
       run: |
