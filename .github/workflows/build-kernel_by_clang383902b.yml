@@ -149,7 +149,9 @@ jobs:
         # 3. 验证 Clang 是否可用
         echo "🔍 验证 Clang 版本："
         clang --version || (echo "❌ Clang 未找到！" && exit 1)
-        
+    
+        export LD_FLAGS="-Wl,--fix-cortex-a53-843419=off"
+        export KBUILD_LDFLAGS="-Wl,--fix-cortex-a53-843419=off"
         # 4. 手动准备配置文件
         mkdir -p out
         
