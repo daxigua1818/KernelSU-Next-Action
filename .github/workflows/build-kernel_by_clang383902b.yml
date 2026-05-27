@@ -97,7 +97,7 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
           
           # 3. 如果你有自定义配置需要开启（比如开启 overlayfs），取消下面几行的注释
-           echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
+            echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
         
     - name: Setup LXC
       if: env.ENABLE_LXC == 'true'
