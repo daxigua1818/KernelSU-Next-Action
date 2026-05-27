@@ -62,7 +62,7 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         # 【核心修复】换回安卓 11 对应的 LineageOS 18.1 分支（内核 4.9）
-        git clone --depth=1 https://github.com/LineageOS/android_kernel_oneplus_sdm845 -b lineage-18.1 android-kernel
+        git clone --depth=1 ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
@@ -126,44 +126,36 @@ jobs:
 
     - name: Build kernel
       run: |
+        set -e
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
 
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
 
-        # ===============================
-        # 一加6T 氢OS11 / 内核4.9 专用
-        # ===============================
-
-        # 1️⃣ 工具链（只用 GCC 4.9）
+        # ===== 工具链 =====
         export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$PATH
         export CROSS_COMPILE=aarch64-linux-android-
         export ARCH=arm64
 
-        # 2️⃣ 清理旧产物
-        rm -rf out
-        mkdir -p out
+        # ===== 生成配置 =====
+        make O=out ARCH=arm64 ${{ env.KERNEL_CONFIG }}
 
-        # 3️⃣ 生成配置
-        make O=out ARCH=arm64 ${{ env.KERNEL_DEFCONFIG }}
+        # ===== KernelSU 必须选项 =====
+        echo "CONFIG_KPROBES=y"         >> out/.config
+        echo "CONFIG_OVERLAY_FS=y"       >> out/.config
+        echo "CONFIG_KALLSYMS=y"         >> out/.config
+        echo "CONFIG_KALLSYMS_ALL=y"     >> out/.config
 
-        # 4️⃣ KernelSU 必需选项
-        echo "CONFIG_KPROBES=y"           >> out/.config
-        echo "CONFIG_OVERLAY_FS=y"         >> out/.config
-        echo "CONFIG_KALLSYMS=y"           >> out/.config
-        echo "CONFIG_KALLSYMS_ALL=y"       >> out/.config
-
-        # 5️⃣ 应用配置
         make O=out ARCH=arm64 olddefconfig
 
-        # 6️⃣ 【关键】屏蔽一加私有驱动冲突（之前 oem_force_dump 报错）
-        sed -i 's/oem_force_dump.o//g' drivers/oneplus/drivers/oem_debug/Makefile 2>/dev/null || true
-        sed -i 's/oem_info.o//g' drivers/oneplus/drivers/oem_debug/Makefile 2>/dev/null || true
+        # ===== 屏蔽原厂 oem_debug 冲突 =====
+        if [ -f drivers/oneplus/drivers/oem_debug/Makefile ]; then
+          sed -i 's/oem_force_dump.o//g' drivers/oneplus/drivers/oem_debug/Makefile
+          sed -i 's/oem_info.o//g' drivers/oneplus/drivers/oem_debug/Makefile
+        fi
 
-        # 7️⃣ 开始编译
-        make -j$(nproc --all) O=out ARCH=arm64 \
-          CROSS_COMPILE=aarch64-linux-android- \
-          Image.gz-dtb
+        # ===== 编译 =====
+        make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- Image.gz-dtb
 
     - name: Check a kernel output files
       run: |
