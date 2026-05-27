@@ -63,10 +63,11 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace
         # 下面这行我已经帮你把网址写死了，直接复制进去
         git clone --depth=1 https://github.com/LineageOS/android_kernel_oneplus_sdm845 -b lineage-18.1 android-kernel
-    - name: Generate .config
+    - name: Generate default config
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        make O=out ARCH=arm64 lineageos_sdm845_defconfig    
+        # 使用高通 sdm845 的默认配置
+        make ARCH=arm64 sdm845_defconfig    
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
       run: |
