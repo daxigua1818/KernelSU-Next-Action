@@ -85,20 +85,18 @@ jobs:
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
       
 
-    - name: Setup Configuration for Kernel
-        run: |
-          cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-          
-          # 【核心修改】直接写死架构为 arm64，不再使用 env.ARCH 变量
-          # 1. 生成默认配置
-          make ARCH=arm64 defconfig
-          
-          # 2. 如果你要打 KernelSU 补丁，继续执行官方脚本
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-          
-          # 3. 如果你有自定义配置需要开启（比如开启 overlayfs），取消下面几行的注释
-            echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
+    - name: Setup Configuration for kernel
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        # 【核心修改】直接写死架构为 arm64，不再使用 env.ARCH 变量
+        # 1. 生成默认配置
+        make ARCH=arm64 defconfig
         
+        # 2. 如果你要打 KernelSU 补丁，继续执行官方脚本
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+        
+        # 3. 如果你有自定义配置需要开启 (比如开启 overlayfs)，取消下面几行的注释
+        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
     - name: Setup LXC
       if: env.ENABLE_LXC == 'true'
       run: |
