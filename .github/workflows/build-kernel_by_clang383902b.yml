@@ -82,21 +82,27 @@ jobs:
       if: env.ENABLE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+        # 修复原作者脚本的语法错误（避免unary operator expected）
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+        # 手动开启KernelSU必需的内核选项（防止脚本漏掉）
+        echo "CONFIG_KPROBES=y" >> .config
+        echo "CONFIG_OVERLAY_FS=y" >> .config
+        echo "CONFIG_KALLSYMS=y" >> .config
       
 
-    - name: Setup Configuration for kernel
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # 【核心修改】直接写死架构为 arm64，不再使用 env.ARCH 变量
-        # 1. 生成默认配置
-        make ARCH=arm64 defconfig
-        
-        # 2. 如果你要打 KernelSU 补丁，继续执行官方脚本
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-        
-        # 3. 如果你有自定义配置需要开启 (比如开启 overlayfs)，取消下面几行的注释
-        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
+    # 删除冗余的 Setup Configuration for kernel 步骤（避免冲突）
+    # - name: Setup Configuration for kernel
+    #   run: |
+    #     cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+    #     # 【核心修改】直接写死架构为 arm64，不再使用 env.ARCH 变量
+    #     # 1. 生成默认配置
+    #     make ARCH=arm64 defconfig
+    #     
+    #     # 2. 如果你要打 KernelSU 补丁，继续执行官方脚本
+    #     curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+    #     
+    #     # 3. 如果你有自定义配置需要开启 (比如开启 overlayfs)，取消下面几行的注释
+    #     echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/defconfig
     - name: Setup LXC
       if: env.ENABLE_LXC == 'true'
       run: |
@@ -163,12 +169,12 @@ jobs:
         
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
             export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_clang/clang-r383902b-11.0.2/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/arm-linux-androideabi-4.9/bin:$PATH
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- ${{ env.KERNEL_CONFIG }}
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- 
+            make -j$(nproc --all) CC="ccache clang --target=aarch64-linux-gnu-" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- ${{ env.KERNEL_CONFIG }}
+            make -j$(nproc --all) CC="ccache clang --target=aarch64-linux-gnu-" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- 
         else
             export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_clang/clang-r383902b-11.0.2/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/arm-linux-androideabi-4.9/bin:$PATH
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- ${{ env.KERNEL_CONFIG }}
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-  
+            make -j$(nproc --all) CC="clang --target=aarch64-linux-gnu-" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- ${{ env.KERNEL_CONFIG }}
+            make -j$(nproc --all) CC="clang --target=aarch64-linux-gnu-" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-  
         fi
 
     - name: Check a kernel output files
