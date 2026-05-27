@@ -130,15 +130,22 @@ jobs:
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
         
-        # 【核心修复】强制使用 GCC 4.9 编译（彻底避开 Clang 的坑）
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_gcc/arm-linux-androideabi-4.9/bin:$PATH
+        # ==========================================
+        # 【最终修复】强制使用 Clang 编译（解决 GCC 版本过旧问题）
+        # ==========================================
+        
+        # 1. 设置 Clang 工具链路径（使用原作者下载的 clang-r383902b）
+        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_clang/clang-r383902b-11.0.2/bin:$PATH
+        
+        # 2. 设置环境变量（这是关键！）
+        export ARCH=arm64
+        export SUBARCH=arm64
         export CROSS_COMPILE=aarch64-linux-android-
-        export CC=aarch64-linux-android-gcc
-        export LD=ld.lld
-
-        # ==========================================
-        # 【核心修复】手动准备配置文件（不再依赖 make defconfig）
-        # ==========================================
+        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        export CC=clang
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        
+        # 3. 手动准备配置文件
         mkdir -p out
         
         # 自动查找设备对应的 defconfig
@@ -154,7 +161,7 @@ jobs:
         cp "$CONFIG_FILE" out/.config
         echo "✅ 已复制配置到 out/.config"
 
-        # 手动开启 KernelSU 和必需的内核选项
+        # 4. 手动开启 KernelSU 和必需的内核选项
         echo "⚙️ 正在开启必需的内核配置..."
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_OVERLAY_FS=y" >> out/.config
@@ -162,12 +169,17 @@ jobs:
         echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
         echo "CONFIG_KERNFS=y" >> out/.config
 
-        # 应用配置
+        # 5. 应用配置
         make O=out ARCH=arm64 olddefconfig
 
-        # 开始编译
-        echo "🔥 开始编译 ${{ env.KERNEL_IMAGE_NAME }} ..."
-        make -j$(nproc --all) -s O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- ${{ env.KERNEL_IMAGE_NAME }}
+        # 6. 开始编译（使用 Clang）
+        echo "🔥 开始使用 Clang 编译 ${{ env.KERNEL_IMAGE_NAME }} ..."
+        make -j$(nproc --all) -s O=out ARCH=arm64 \
+          CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+          ${{ env.KERNEL_IMAGE_NAME }}
 
     - name: Check a kernel output files
       run: |
