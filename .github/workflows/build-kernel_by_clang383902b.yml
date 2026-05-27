@@ -124,142 +124,240 @@ jobs:
         key: build-kernel-${{ env.DEVICE }}${{ env.UPLOADNAME }}
         max-size: 2G
 
-    - name: Build kernel
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export KBUILD_BUILD_HOST=Github-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        
-        # ==========================================
-        # 【最终修复】强制使用 Clang 编译（解决 GCC 版本过旧问题）
-        # ==========================================
-        
-        # 1. 设置 Clang 工具链路径（使用原作者下载的 clang-r383902b）
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/google_clang/clang-r383902b-11.0.2/bin:$PATH
-        
-        # 2. 设置环境变量（这是关键！）
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CC=clang
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        
-        # 3. 手动准备配置文件
-        mkdir -p out
-        
-        # 自动查找设备对应的 defconfig
-        CONFIG_FILE=$(find arch/arm64/configs/ -name "*${{ env.DEVICE }}*defconfig" | head -n 1)
-        
-        if [ -z "$CONFIG_FILE" ]; then
-            echo "❌ 错误：在 arch/arm64/configs/ 下找不到包含 ${{ env.DEVICE }} 的配置文件！"
-            echo "请检查你的仓库中是否有对应的 defconfig 文件。"
-            exit 1
-        fi
-        
-        echo "🔍 找到配置文件: $CONFIG_FILE"
-        cp "$CONFIG_FILE" out/.config
-        echo "✅ 已复制配置到 out/.config"
+    yaml
 
-        # 4. 手动开启 KernelSU 和必需的内核选项
-        echo "⚙️ 正在开启必需的内核配置..."
-        echo "CONFIG_KPROBES=y" >> out/.config
-        echo "CONFIG_OVERLAY_FS=y" >> out/.config
-        echo "CONFIG_KALLSYMS=y" >> out/.config
-        echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
-        echo "CONFIG_KERNFS=y" >> out/.config
+name: Build kernel
 
-        # 5. 应用配置
-        make O=out ARCH=arm64 olddefconfig
+run: |
 
-        # 6. 开始编译（使用 Clang）
-        echo "🔥 开始使用 Clang 编译 ${{ env.KERNEL_IMAGE_NAME }} ..."
-        make -j$(nproc --all) -s O=out ARCH=arm64 \
-          CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-android- \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          ${{ env.KERNEL_IMAGE_NAME }}
+cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
 
-    - name: Check a kernel output files
-      run: |
-       cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
-           echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
-           echo "✅ 内核编译成功！"
-       else
-           echo "❌ 内核输出文件为空，编译失败！"
-           ls -R android-kernel/out/arch/arm64/boot/
-           exit 1
-       fi
-       if [ "${{ env.NEED_DTBO }}" = "true" ]; then
-           if [ -f android-kernel/out/arch/arm64/boot/dtbo.img ]; then
-               echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
-           else
-               echo "❌ DTBO 镜像为空，编译失败！"
-               exit 1
-           fi
-       fi
-  
-    - name: Make Anykernel3
-      if: env.CHECK_FILE_IS_OK == 'true'
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/tomxi1997/AnyKernel3.git
-        cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
-        if [ "${{ env.CHECK_DTBO_IS_OK }}" = "true" ]; then
-            cp android-kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/
-        fi
-        rm -rf AnyKernel3/.git* AnyKernel3/README.md
+export KBUILD_BUILD_HOST=Github-Action
 
-    - name: Make boot image with magiskboot
-      if: env.HAVE_SOURCE_BOOT_IMAGE == 'true' && env.CHECK_FILE_IS_OK == 'true' && env.BUILD_BOOT_IMG == 'true'
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        wget -O magisk.tar.xz https://github.com/tomxi1997/KernelSU-Next-Action/releases/download/v1/magiskboot.tar.xz
-        tar -xf magisk.tar.xz
-        sudo chmod +x magiskboot
-        mkdir -p ./tmp
-        cp magiskboot ./tmp
-        cp boot-source.img ./tmp/boot.img
-        cd ./tmp
-        ./magiskboot unpack boot.img 
-        rm kernel
-        cp ../android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ./kernel
-        ./magiskboot repack boot.img 
-        cp new-boot.img $GITHUB_WORKSPACE/kernel_workspace/boot.img
-        cd ..
-        if [ -f boot.img ]; then
-            echo "MAKE_BOOT_IMAGE_IS_OK=true" >> $GITHUB_ENV
-        else
-            echo "❌ Boot 镜像为空，制作失败！"
-            exit 1
-        fi
-    
-    - name: Upload ${{ env.KERNEL_IMAGE_NAME }}
-      if: env.CHECK_FILE_IS_OK == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}
+export KBUILD_BUILD_USER=(echo{{ github.actor }} | tr A-Z a-z)
 
-    - name: Upload AnyKernel3
-      if: env.CHECK_FILE_IS_OK == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: AnyKernel3${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/AnyKernel3/*
+==========================================
+【终极修复】下载官方 AOSP Clang 进行编译
+==========================================
 
-    - name: Upload DTBO image
-      if: env.CHECK_DTBO_IS_OK == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: dtbo-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/android-kernel/out/arch/arm64/boot/dtbo.img
+echo "🔥 正在下载 AOSP 官方 Clang 工具链..."
 
-    - name: Upload boot image
-      if: env.MAKE_BOOT_IMAGE_IS_OK == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: boot${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/boot.img
+下载 Google 官方推荐的 Clang (以 Clang r450784d 为例，适用于 Android 12/13/14 内核)
+如果内核很老（Android 10/11），可以将链接中的 r450784d 改为 r416183b
+
+wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/main/clang-r450784d.tgz?format=TEXT
+-O clang.tgz
+
+tar -xzf clang.tgz
+
+rm clang.tgz
+
+自动查找解压出来的 Clang 目录名（通常是 clang-xxxxxx）
+
+CLANG_DIR=$(ls | grep clang-)
+
+echo "✅ 找到 Clang 目录: $CLANG_DIR"
+
+设置环境变量，强制使用新下载的 Clang
+
+export PATH=PWD/CLANG_DIR/bin:$PATH
+
+export CLANG_TRIPLE=aarch64-linux-gnu-
+
+export CROSS_COMPILE=aarch64-linux-android-
+
+export CC=clang
+
+export LD=ld.lld
+
+打印 Clang 版本以确认
+
+clang --version
+
+==========================================
+开始编译流程
+==========================================
+
+echo "⚙️ 正在生成默认配置..."
+
+make O=out ARCH=arm64 ${{ env.KERNEL_CONFIG }}
+
+echo "⚙️ 正在开启必需的内核配置..."
+
+echo "CONFIG_KPROBES=y" >> out/.config
+
+echo "CONFIG_OVERLAY_FS=y" >> out/.config
+
+echo "CONFIG_KALLSYMS=y" >> out/.config
+
+make O=out ARCH=arm64 olddefconfig
+
+echo "🔥 开始正式编译内核..."
+
+使用 Clang 编译，-j$(nproc --all) 代表全核心编译
+
+make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- CC=clang Image.gz-dtb
+
+name: Check a kernel output files
+
+run: |
+
+cd $GITHUB_WORKSPACE/kernel_workspace
+
+if [ -f android-kernel/out/arch/env.ARCH/boot/{{ env.KERNEL_IMAGE_NAME }} ]; then
+
+echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+
+else
+
+echo "❌ 内核编译失败，未找到输出文件！"
+
+echo "--- 目录内容如下 ---"
+
+ls -R android-kernel/out/arch/arm64/boot/
+
+echo "---------------------"
+
+exit 1
+
+fi
+
+if [ ${{ env.NEED_DTBO }} = true ]; then
+
+if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
+
+echo "CHECK_DTBO_IS_OK=true" >> $GITHUAL_ENV
+
+else
+
+echo "⚠️ 未找到 DTBO 文件，跳过上传。"
+
+fi
+
+fi
+
+name: Make Anykernel3
+
+if: env.CHECK_FILE_IS_OK == 'true'
+
+run: |
+
+cd $GITHUB_WORKSPACE/kernel_workspace
+
+echo "📦 正在准备 AnyKernel3..."
+
+git clone https://github.com/tomxi1997/AnyKernel3.git
+
+echo "📄 正在复制内核文件..."
+
+cp android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
+
+if [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
+
+cp android-kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/
+
+fi
+
+rm -rf AnyKernel3/.git* AnyKernel3/README.md
+
+name: Make boot image with magiskboot
+
+if: env.HAVE_SOURCE_BOOT_IMAGE == 'true' && env.CHECK_FILE_IS_OK == 'true' && env.BUILD_BOOT_IMG == 'true'
+
+run: |
+
+cd $GITHUB_WORKSPACE/kernel_workspace
+
+wget -O magisk.tar.xz https://github.com/tomxi1997/KernelSU-Next-Action/releases/download/v1/magiskboot.tar.xz
+
+tar -xf magisk.tar.xz
+
+sudo chmod +x magiskboot
+
+mkdir -p ./tmp
+
+cp magiskboot ./tmp
+
+cp boot-source.img ./tmp/boot.img
+
+cd ./tmp
+
+./magiskboot unpack boot.img
+
+rm kernel
+
+cp ../android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }} ./kernel
+
+./magiskboot repack boot.img
+
+cp new-boot.img $GITHUB_WORKSPACE/kernel_workspace/boot.img
+
+cd ..
+
+if [ -f boot.img ]; then
+
+echo "MAKE_BOOT_IMAGE_IS_OK=true" >> $GITHUB_ENV
+
+else
+
+echo "❌ Boot 镜像制作失败！"
+
+exit 1
+
+fi
+
+name: Upload ${{ env.KERNEL_IMAGE_NAME }}
+
+if: env.CHECK_FILE_IS_OK == 'true'
+
+uses: actions/upload-artifact@v4
+
+with:
+
+name: env.KERNEL
+I
+	​
+
+MAGE
+N
+	​
+
+AME{{ env.UPLOADNAME }}-env.DEVICE−{{ env.BUILD_TIME }}
+
+path: kernel_workspace/android-kernel/out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}
+
+name: Upload AnyKernel3
+
+if: env.CHECK_FILE_IS_OK == 'true'
+
+uses: actions/upload-artifact@v4
+
+with:
+
+name: AnyKernel3env.UPLOADNAME−{{ env.DEVICE }}-${{ env.BUILD_TIME }}
+
+path: kernel_workspace/AnyKernel3/*
+
+name: Upload DTBO image
+
+if: env.CHECK_DTBO_IS_OK == 'true'
+
+uses: actions/upload-artifact@v4
+
+with:
+
+name: dtbo-env.DEVICE−{{ env.BUILD_TIME }}
+
+path: kernel_workspace/android-kernel/out/arch/arm64/boot/dtbo.img
+
+name: Upload boot image
+
+if: env.MAKE_BOOT_IMAGE_IS_OK == 'true'
+
+uses: actions/upload-artifact@v4
+
+with:
+
+name: bootenv.UPLOADNAME−{{ env.DEVICE }}-${{ env.BUILD_TIME }}
+
+path: kernel_workspace/boot.img
